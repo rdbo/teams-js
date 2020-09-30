@@ -70,32 +70,6 @@ function tms_get_call_time()
     return time_left;
 }
 
-<!--
-function tms_get_member_count()
-{
-    elements = document.getElementsByTagName("accordion-section");
-    html_filter = '<accordion-section sid="'
-    member_count = 0
-
-    for(i = 0; i < elements.length; i++)
-    {
-        if(elements[i].outerHTML.startsWith(html_filter))
-        {
-            elements2 = elements[i].getElementsByClassName("roster-list-title");
-            for(j = 0; j < elements2.length; j++)
-            {
-                elements3 = elements2[j].getElementsByClassName("toggle-number");
-                member_count += Number(elements3[0].innerText.substr(1, elements3[0].innerText.length - 2));
-            }
-
-            break;
-        }
-    }
-
-    return member_count;
-}
--->
-
 function tms_get_member_count()
 {
     elements = document.getElementsByTagName("button");
