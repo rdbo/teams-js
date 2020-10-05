@@ -3,6 +3,8 @@
 //Global variables
 
 var tms_cancel = false;
+var tms_queue_count = 0;
+var doc;
 
 //Functions
 
@@ -54,9 +56,16 @@ function time_to_secs(time_str)
     return secs;
 }
 
+function tms_get_controller()
+{
+    doc = document;
+    return angular.element(doc.getElementById("hangup-button")).controller();
+}
+
 function tms_get_call_time()
 {
-    duration = document.getElementById("calling-duration");
+    doc = document;
+    duration = doc.getElementById("calling-duration");
     elements = duration.getElementsByClassName("badge-text");
     time_left = ""
     time_left_html = '<div class="badge-text" ng-if="::handler.showBadge">';
@@ -72,7 +81,9 @@ function tms_get_call_time()
 
 function tms_get_member_count()
 {
-    elements = document.getElementsByTagName("button");
+    /*
+    doc = document;
+    elements = doc.getElementsByTagName("button");
     html_filter = '<button accordion-section-toggle="" class="roster-list-title" aria-label="';
     member_count = 0;
 
@@ -86,12 +97,18 @@ function tms_get_member_count()
         }
     }
 
+    */
+
+    ctrl = tms_get_controller();
+    member_count = ctrl.call.participantCounts.totalParticipants;
+
     return member_count;
 }
 
 function tms_hangup()
 {
-    btn_hangup = document.getElementById("hangup-button");
+    doc = document;
+    btn_hangup = doc.getElementById("hangup-button");
     btn_hangup.click();
 }
 
@@ -108,71 +125,117 @@ async function tms_callback(callback, args, delay)
 
 function tms_load_member_count()
 {
-    //This must be called at least once before tms_get_member_count
+    /*
+    //This must (NO LONGER) be called at least once before tms_get_member_count
 
-    btn_participants = document.getElementById("roster-button");
+    doc = document;
+    btn_participants = doc.getElementById("roster-button");
     btn_participants.click(); //Load member count (participant button)
+    sleep(50);
     btn_participants.click(); //Toggle participants panel back
+    */
 }
 
 async function tms_hangup_on_member_count(member_num)
 {
-    await tms_load_member_count();
-    await tms_callback((member_count_hangup) => {
-        member_count = tms_get_member_count();
+    tms_queue_count += 1;
 
-        if(member_count == NaN || Number(member_count_hangup) == NaN || tms_cancel == true)
-            return false;
+    try
+    {
+        await tms_callback((member_count_hangup) => {
+            member_count = tms_get_member_count();
 
-        if(member_count <= member_count_hangup)
-        {
-            tms_hangup();
-            return false;
-        }
+            if(member_count == NaN ||Number(member_count_hangup) == NaN || tms_cancel == true)
+                return false;
 
-        return true;
-    }, member_num, 1000);
+            if(member_count <= member_count_hangup)
+            {
+                tms_hangup();
+                return false;
+            }
+
+            return true;
+        }, member_num, 1000);
+    } catch(e) {}
+
+    tms_queue_count -= 1;
 }
 
 async function tms_hangup_on_system_time(system_time_str)
 {
-    await tms_callback((hangup_time_str) => {
-        system_time = new Date();
-        system_time_str = system_time.getHours() + ":" + system_time.getMinutes() + ":" + system_time.getSeconds();
+    tms_queue_count += 1;
+    try
+    {
+        await tms_callback((hangup_time_str) => {
+            system_time = new Date();
+            system_time_str = system_time.getHours() + ":" + system_time.getMinutes() + ":" + system_time.getSeconds();
 
-        max_time = time_to_secs("23:59:59");
-        cur_time = time_to_secs(system_time_str);
-        hangup_time = time_to_secs(hangup_time_str);
+            max_time = time_to_secs("23:59:59");
+            cur_time = time_to_secs(system_time_str);
+            hangup_time = time_to_secs(hangup_time_str);
 
-        if(cur_time == NaN || hangup_time == NaN || hangup_time > max_time || tms_cancel == true)
-            return false;
+            if(cur_time == NaN || hangup_time == NaN || hangup_time > max_time || tms_cancel == true)
+                return false;
 
-        if(cur_time >= hangup_time)
-        {
-            tms_hangup();
-            return false;
-        }
+            if(cur_time >= hangup_time)
+            {
+                tms_hangup();
+                return false;
+            }
 
-        return true;
-    }, system_time_str, 1000);
+            return true;
+        }, system_time_str, 1000);
+    } catch(e) {  }
+    tms_queue_count -= 1;
 }
 
 async function tms_hangup_on_call_time(hangup_time_str)
 {
-    await tms_callback((hangup_time_str) => {
-        call_time_str = tms_get_call_time();
-        call_time = time_to_secs(call_time_str);
-        hangup_time = time_to_secs(hangup_time_str);
+    tms_queue_count += 1;
+    try
+    {
+        await tms_callback((hangup_time_str) => {
+            call_time_str = tms_get_call_time();
+            call_time = time_to_secs(call_time_str);
+            hangup_time = time_to_secs(hangup_time_str);
 
-        if(call_time == -1 || hangup_time == -1 || tms_cancel == true)
-            return false;
+            if(call_time == -1 || hangup_time == -1 || tms_cancel == true)
+                return false;
 
-        if(call_time >= hangup_time)
+            if(call_time >= hangup_time)
+            {
+                tms_hangup();
+                return false;
+            }
+
+            return true;
+        }, hangup_time_str, 1000);
+    } catch(e) {  }
+
+    tms_queue_count -= 1;
+}
+
+async function tms_check_clear()
+{
+    if(tms_queue_count > 0)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+async function tms_clear_queues()
+{
+    tms_cancel = true;
+    await tms_callback((args) =>
+    {
+        if(tms_queue_count > 0)
         {
-            tms_hangup();
-            return false;
+            return true;
         }
 
-        return true;
-    }, hangup_time_str, 1000);
+        return false;
+    }, 0, 1000);
+    tms_cancel = false;
 }
